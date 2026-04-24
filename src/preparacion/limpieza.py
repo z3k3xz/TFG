@@ -10,7 +10,7 @@ COLUMNAS = ['flight_id', 'timestamp', 'latitude', 'longitude', 'altitude',
             'groundspeed', 'vertical_rate']
 
 # Umbrales ajustados para mayor precisión
-UMBRAL_HUECO_MAX = 60   # max segundos sin senal antes de descartar el vuelo
+UMBRAL_HUECO_MAX = 300   # max segundos sin senal antes de descartar el vuelo
 VELOCIDAD_MAX_KT = 700  # ningún comercial pasa de esto en ground speed
 CAMBIO_ALT_MAX = 100    # ft/s, equivale a ~6000ft/min
 ALTITUD_MIN = -100      # margen para aeropuertos bajo nivel del mar
