@@ -1,72 +1,49 @@
 @echo off
 echo ============================================================
-echo  PIPELINE MACRO - Ejecucion completa
+echo  PIPELINE MICRO - Ejecucion completa
 echo ============================================================
+echo.
+echo  NOTA: Requiere haber ejecutado el pipeline macro antes
+echo  (necesita trayectorias_proyectadas.parquet)
 echo.
 
 cd /d "%~dp0"
 
-echo [1/6] Fusionando parquets...
-python ..\preparacion\fusionar.py
+set /p ICAO="Codigo ICAO del aeropuerto a analizar: "
+
+echo.
+echo [1/3] Recorte y remuestreo del area terminal (%ICAO%)...
+python ..\micro\recorte_micro.py %ICAO%
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en fusionar.py
+    echo ERROR en recorte_micro.py
     pause
     exit /b 1
 )
 echo.
 
-echo [2/6] Limpieza de trayectorias...
-python ..\preparacion\limpieza.py
+echo [2/3] Calculo de distancias ponderadas WED (%ICAO%)...
+python ..\micro\distancias_micro.py %ICAO%
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en limpieza.py
+    echo ERROR en distancias_micro.py
     pause
     exit /b 1
 )
 echo.
 
-echo [3/6] Proyeccion LCC...
-python ..\preparacion\proyeccion.py
+echo [3/3] Clustering HDBSCAN (%ICAO%)...
+python ..\micro\clustering_micro.py %ICAO%
 if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en proyeccion.py
-    pause
-    exit /b 1
-)
-echo.
-
-echo [4/6] Remuestreo espacial...
-python ..\preparacion\remuestreo_espacial.py
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en remuestreo_espacial.py
-    pause
-    exit /b 1
-)
-echo.
-
-echo [5/6] Matriz de distancias...
-python ..\macro\distancias_macro.py
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en distancias_macro.py
-    pause
-    exit /b 1
-)
-echo.
-
-echo [6/6] Clustering HDBSCAN...
-python ..\macro\clustering_macro.py
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR en clustering_macro.py
+    echo ERROR en clustering_micro.py
     pause
     exit /b 1
 )
 echo.
 
 echo ============================================================
-echo  PIPELINE COMPLETADO
+echo  PIPELINE MICRO COMPLETADO - %ICAO%
 echo ============================================================
 echo.
 echo Para ver resultados ejecuta:
-echo   python ..\macro\caracterizacion_macro.py
-echo   python ..\macro\visualizar_macro.py
-echo   python ..\dashboard\dashboard.py
+echo   python ..\dashboard\dashboard_micro.py
 echo.
 pause

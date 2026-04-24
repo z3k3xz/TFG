@@ -1,7 +1,7 @@
 import pandas as pd
 
 # 1. Cargamos el archivo 
-df = pd.read_parquet("../../datos/2022-01-01.parquet", engine='pyarrow')
+df = pd.read_parquet("../../datos/parquet/2022-01-01.parquet", engine='pyarrow')
 
 # 2. Preparamos el control
 total_filas = len(df)

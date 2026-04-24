@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import time
 import os
+import sys
 
 # === CONFIGURACIÓN ===
 RUTA_TRAYECTORIAS = "../../resultados/preparacion/trayectorias_proyectadas.parquet"
@@ -131,7 +132,11 @@ if __name__ == "__main__":
         nombre = meta_presentes[meta_presentes['ades'] == code]['name_ades'].iloc[0]
         print(f"  {i:2d}. {code} ({nombre}) — {count} vuelos")
 
-    codigo = input(f"\nCódigo ICAO del aeropuerto a analizar: ").strip().upper()
+    if len(sys.argv) > 1:
+        codigo = sys.argv[1].strip().upper()
+        print(f"\nAeropuerto (argumento): {codigo}")
+    else:
+        codigo = input(f"\nCódigo ICAO del aeropuerto a analizar: ").strip().upper()
 
     # --- Posición del aeropuerto ---
     print(f"\nCalculando posición de {codigo}...")

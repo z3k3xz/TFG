@@ -3,6 +3,7 @@ import pandas as pd
 import hdbscan
 import time
 import os
+import sys
 
 # === CONFIGURACIÓN ===
 RUTA_MICRO = "../../resultados/micro/"
@@ -27,7 +28,12 @@ if __name__ == "__main__":
         exit(1)
 
     print(f"Aeropuertos disponibles: {', '.join(sorted(aeropuertos))}")
-    codigo = input(f"Código ICAO del aeropuerto: ").strip().upper()
+
+    if len(sys.argv) > 1:
+        codigo = sys.argv[1].strip().upper()
+        print(f"Aeropuerto (argumento): {codigo}")
+    else:
+        codigo = input(f"Código ICAO del aeropuerto: ").strip().upper()
 
     if codigo not in aeropuertos:
         print(f"ERROR: No hay datos para {codigo}")

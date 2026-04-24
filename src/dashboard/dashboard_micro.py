@@ -107,6 +107,23 @@ def crear_mapa_micro(df, codigo, clusters_seleccionados, mostrar_ruido):
     n_total = df['flight_id'].nunique()
     n_ruido = df[df['cluster'] == -1]['flight_id'].nunique()
 
+    # Marcador del aeropuerto (mediana del último punto de todas las trayectorias)
+    ultimo_punto = df[df['point_index'] == df['point_index'].max()]
+    x_aero = ultimo_punto['x'].median()
+    y_aero = ultimo_punto['y'].median()
+
+    fig.add_trace(go.Scattergl(
+        x=[x_aero], y=[y_aero],
+        mode='markers+text',
+        marker=dict(size=12, color='red', symbol='star'),
+        text=[codigo],
+        textposition='top center',
+        textfont=dict(size=12, color='red'),
+        name=codigo,
+        showlegend=True,
+        hovertemplate=f'<b>{codigo}</b><extra></extra>'
+    ))
+
     # Rango fijo
     x_min, x_max = df['x'].min(), df['x'].max()
     y_min, y_max = df['y'].min(), df['y'].max()
@@ -201,6 +218,98 @@ def crear_resumen_micro(df, cluster_id):
     return resumen
 
 
+def crear_mapa_rutas_micro(df, codigo):
+    """
+    Mapa 2D coloreado por ruta (origen → destino) con toggle en leyenda.
+    """
+    fig = go.Figure()
+
+    # Obtener ruta de cada vuelo
+    meta_vuelos = df.groupby('flight_id')[['adep', 'name_adep', 'ades', 'name_ades', 'cluster', 'airline']].first()
+    meta_vuelos['ruta'] = meta_vuelos['adep'].fillna('?') + ' → ' + meta_vuelos['ades'].fillna('?')
+
+    # Ordenar rutas por frecuencia
+    conteo_rutas = meta_vuelos['ruta'].value_counts()
+    rutas_unicas = conteo_rutas.index.tolist()
+
+    # Pintar por ruta
+    for i, ruta in enumerate(rutas_unicas):
+        ids_ruta = meta_vuelos[meta_vuelos['ruta'] == ruta].index
+        n_vuelos_ruta = len(ids_ruta)
+        color = COLORES[i % len(COLORES)]
+
+        # Contar cluster vs ruido
+        n_ruido_r = (meta_vuelos.loc[ids_ruta, 'cluster'] == -1).sum()
+
+        if n_ruido_r == n_vuelos_ruta:
+            label = f'{ruta} ({n_vuelos_ruta}) [ruido]'
+        elif n_ruido_r > 0:
+            label = f'{ruta} ({n_vuelos_ruta}, {n_ruido_r} ruido)'
+        else:
+            label = f'{ruta} ({n_vuelos_ruta})'
+
+        primera = True
+        for fid in ids_ruta:
+            vuelo = df[df['flight_id'] == fid]
+            meta_v = meta_vuelos.loc[fid]
+            es_ruido = meta_v['cluster'] == -1
+
+            fig.add_trace(go.Scattergl(
+                x=vuelo['x'], y=vuelo['y'],
+                mode='lines',
+                line=dict(color=color, width=1.2, dash='dot' if es_ruido else 'solid'),
+                opacity=0.4 if es_ruido else 0.7,
+                name=label if primera else None,
+                showlegend=primera,
+                legendgroup=f'ruta_micro_{ruta}',
+                hovertemplate=(
+                    f'<b>Vuelo:</b> {fid}<br>'
+                    f'<b>Origen:</b> {meta_v.get("adep", "?")} ({meta_v.get("name_adep", "")})<br>'
+                    f'<b>Aerolínea:</b> {meta_v.get("airline", "?")}<br>'
+                    f'<b>{"Ruido" if es_ruido else f"Cluster {meta_v["cluster"]}"}</b>'
+                    '<extra></extra>'
+                )
+            ))
+            primera = False
+
+    # Rango fijo
+    x_min, x_max = df['x'].min(), df['x'].max()
+    y_min, y_max = df['y'].min(), df['y'].max()
+    margen_x = (x_max - x_min) * 0.05
+    margen_y = (y_max - y_min) * 0.05
+
+    # Marcador del aeropuerto
+    ultimo_punto = df[df['point_index'] == df['point_index'].max()]
+    x_aero = ultimo_punto['x'].median()
+    y_aero = ultimo_punto['y'].median()
+
+    fig.add_trace(go.Scattergl(
+        x=[x_aero], y=[y_aero],
+        mode='markers+text',
+        marker=dict(size=12, color='red', symbol='star'),
+        text=[codigo],
+        textposition='top center',
+        textfont=dict(size=12, color='red'),
+        name=codigo,
+        showlegend=True,
+        hovertemplate=f'<b>{codigo}</b><extra></extra>'
+    ))
+
+    fig.update_layout(
+        title=f'Área terminal {codigo} — Vista por rutas',
+        xaxis_title='X (metros, LCC)',
+        yaxis_title='Y (metros, LCC)',
+        xaxis=dict(scaleanchor='y', scaleratio=1, range=[x_min - margen_x, x_max + margen_x]),
+        yaxis=dict(range=[y_min - margen_y, y_max + margen_y]),
+        plot_bgcolor='white',
+        height=600,
+        legend=dict(font=dict(size=9), itemclick='toggle', itemdoubleclick='toggleothers'),
+        margin=dict(l=60, r=20, t=50, b=60)
+    )
+
+    return fig
+
+
 # === APLICACIÓN DASH ===
 app = dash.Dash(__name__)
 
@@ -247,8 +356,11 @@ app.layout = html.Div([
     ], style={'display': 'flex', 'padding': '10px 20px', 'backgroundColor': '#f5f5f5',
               'borderRadius': '5px', 'margin': '10px 20px'}),
 
-    # Mapa 2D
+    # Mapa 2D por clusters
     dcc.Graph(id='mapa-micro', style={'margin': '0 20px'}),
+
+    # Separador
+    html.Hr(style={'margin': '20px'}),
 
     # Inspector de cluster
     html.Div([
@@ -272,6 +384,15 @@ app.layout = html.Div([
                             'borderRadius': '5px', 'margin': '10px'})
         ], style={'display': 'flex', 'margin': '0 20px'})
     ]),
+
+    # Separador
+    html.Hr(style={'margin': '20px'}),
+
+    # Mapa 2D por rutas
+    html.H2('Vista por rutas', style={'padding': '0 20px', 'marginBottom': '5px'}),
+    html.P('Click en la leyenda para ocultar/mostrar. Doble click para aislar una ruta.',
+           style={'padding': '0 20px', 'color': '#666', 'fontSize': '13px', 'marginTop': '0'}),
+    dcc.Graph(id='mapa-rutas-micro', style={'margin': '0 20px'}),
 
 ], style={'fontFamily': 'Arial', 'maxWidth': '1400px', 'margin': '0 auto'})
 
@@ -326,6 +447,17 @@ def actualizar_mapa_micro(codigo, clusters_sel, opciones_ruido):
     df = obtener_datos(codigo)
     mostrar_ruido = 'ruido' in (opciones_ruido or [])
     return crear_mapa_micro(df, codigo, clusters_sel or [], mostrar_ruido)
+
+
+@app.callback(
+    Output('mapa-rutas-micro', 'figure'),
+    Input('selector-aeropuerto-micro', 'value')
+)
+def actualizar_mapa_rutas_micro(codigo):
+    if codigo is None:
+        return go.Figure()
+    df = obtener_datos(codigo)
+    return crear_mapa_rutas_micro(df, codigo)
 
 
 @app.callback(
