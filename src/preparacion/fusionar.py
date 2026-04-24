@@ -71,14 +71,21 @@ if __name__ == "__main__":
     print(f"Metadatos encontrados para {len(df_meta_filtrado)} de {len(ids_presentes)} vuelos")
 
     # Verificamos vuelos sin metadatos
-    ids_sin_meta = set(ids_presentes) - set(df_meta_filtrado['flight_id'].unique())
+    ids_con_meta = set(df_meta_filtrado['flight_id'].unique())
+    ids_sin_meta = set(ids_presentes) - ids_con_meta
     if len(ids_sin_meta) > 0:
-        print(f"AVISO: {len(ids_sin_meta)} vuelos no tienen metadatos en flight_list.csv")
+        print(f"  Vuelos sin metadatos: {len(ids_sin_meta)} (se descartan)")
+
+    # Filtrar: conservar solo vuelos con metadatos
+    n_antes = df_fusionado['flight_id'].nunique()
+    df_fusionado = df_fusionado[df_fusionado['flight_id'].isin(ids_con_meta)]
+    n_despues = df_fusionado['flight_id'].nunique()
+    print(f"  Vuelos tras filtrado: {n_antes} -> {n_despues}")
 
     # --- Resumen ---
     n_vuelos = df_fusionado['flight_id'].nunique()
     n_puntos = len(df_fusionado)
-
+    
     print(f"\n{'=' * 60}")
     print(f"RESULTADO DE LA FUSION")
     print(f"{'=' * 60}")

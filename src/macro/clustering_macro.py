@@ -8,14 +8,11 @@ RUTA_MATRIZ = "../../resultados/macro/matriz_distancias_macro.npy"
 RUTA_IDS = "../../resultados/macro/ids_vuelos_macro.npy"
 RUTA_SALIDA = "../../resultados/macro/clusters_macro.parquet"
 
-#pip install hdbscan
-
 # Parámetros de HDBSCAN
 # min_cluster_size: tamaño mínimo de un cluster para ser considerado válido.
 #   Valores bajos → más clusters pequeños. Valores altos → menos clusters, más ruido.
 # min_samples: controla lo conservador que es el algoritmo.
 #   Valores altos → más puntos etiquetados como ruido (-1).
-MIN_CLUSTER_SIZE = 15
 MIN_SAMPLES = 10
 
 
@@ -32,6 +29,14 @@ if __name__ == "__main__":
     ids_vuelos = np.load(RUTA_IDS, allow_pickle=True)
     n_vuelos = len(ids_vuelos)
     print(f"Matriz: {dist_matrix.shape}")
+
+    # --- Selección de min_cluster_size ---
+    reco_bajo = max(int(n_vuelos * 0.005), 2)
+    reco_alto = max(int(n_vuelos * 0.02), 5)
+    print(f"\nVuelos totales: {n_vuelos}")
+    print(f"Rango recomendado para min_cluster_size: {reco_bajo} - {reco_alto}")
+    entrada = input(f"min_cluster_size [{reco_bajo}]: ").strip()
+    MIN_CLUSTER_SIZE = int(entrada) if entrada else reco_bajo
 
     # --- HDBSCAN ---
     print(f"\nEjecutando HDBSCAN...")
