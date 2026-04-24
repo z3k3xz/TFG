@@ -8,8 +8,12 @@
 
 Pipeline de análisis de trayectorias aéreas ADS-B sobre el espacio aéreo europeo.
 A partir de datos brutos de radar, el sistema limpia, proyecta, remuestrea y agrupa
-las trayectorias en corredores aéreos mediante clustering HDBSCAN, permitiendo
-identificar y caracterizar los flujos de tráfico.
+las trayectorias en corredores aéreos mediante clustering HDBSCAN a dos niveles:
+
+- **Macro**: identificación de corredores a escala continental usando distancia euclídea.
+- **Micro**: identificación de flujos de llegada (STARs) en el área terminal de un
+  aeropuerto usando distancia euclídea ponderada (WED), basado en el enfoque de
+  Corrado et al. (2020).
 
 ## Datos
 
@@ -26,23 +30,28 @@ Solo se procesan los vuelos que tienen metadatos en `flight_list.csv`.
 
 ```
 TFG/
-├── datos/ (.gitignore)
+├── datos/
 │   ├── parquet/
 │   │   ├── 2022-01-01.parquet
 │   │   ├── 2022-01-02.parquet
 │   │   └── ...
 │   └── flight_list.csv
 │
-├── resultados/ (.gitignore)
+├── resultados/
 │   ├── preparacion/
 │   │   ├── datos_fusionados.parquet
 │   │   ├── trayectorias_limpias.parquet
 │   │   ├── trayectorias_proyectadas.parquet
 │   │   └── trayectorias_normalizadas.parquet
-│   └── macro/
-│       ├── matriz_distancias_macro.npy
-│       ├── ids_vuelos_macro.npy
-│       └── clusters_macro.parquet
+│   ├── macro/
+│   │   ├── matriz_distancias_macro.npy
+│   │   ├── ids_vuelos_macro.npy
+│   │   └── clusters_macro.parquet
+│   └── micro/
+│       ├── trayectorias_micro_{ICAO}.parquet
+│       ├── matriz_micro_{ICAO}.npy
+│       ├── ids_micro_{ICAO}.npy
+│       └── clusters_micro_{ICAO}.parquet
 │
 ├── src/
 │   ├── exploracion/
@@ -51,7 +60,8 @@ TFG/
 │   │   ├── filtrado.py
 │   │   ├── columnas.py
 │   │   ├── altitud.py
-│   │   └── ruidos.py
+│   │   ├── ruidos.py
+│   │   └── top_aeropuertos.py
 │   ├── preparacion/
 │   │   ├── fusionar.py
 │   │   ├── limpieza.py
@@ -62,10 +72,17 @@ TFG/
 │   │   ├── clustering_macro.py
 │   │   ├── caracterizacion_macro.py
 │   │   └── visualizar_macro.py
+│   ├── micro/
+│   │   ├── recorte_micro.py
+│   │   ├── distancias_micro.py
+│   │   └── clustering_micro.py
 │   ├── dashboard/
-│   │   └── dashboard.py
+│   │   ├── dashboard.py
+│   │   └── dashboard_micro.py
 │   └── script/
-│       └── pipeline_macro.bat
+│       ├── pipeline_macro.bat
+│       ├── pipeline_micro.bat
+│       └── limpiar_micro.bat
 │
 └── README.md
 ```
@@ -88,7 +105,7 @@ TFG/
 │         ▼                                                   │
 │  ┌─────────────┐                                            │
 │  │ limpieza.py  │  5 filtros: saltos de posición, errores   │
-│  │              │  de altitud, rango, huecos, puntos mín.   │
+│  │              │  de altitud, rango, huecos >5min, mín.    │
 │  └──────┬──────┘                                            │
 │         │  trayectorias_limpias.parquet                      │
 │         ▼                                                   │
@@ -130,31 +147,95 @@ TFG/
 └─────────────────────────────────────────────────────────────┘
           │
 ┌─────────┼───────────────────────────────────────────────────┐
-│         ▼           DASHBOARD                               │
+│         ▼        DASHBOARD MACRO                            │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐                                           │
 │  │ dashboard.py  │  Dash + Plotly → http://127.0.0.1:8050   │
 │  │               │  Mapa 2D interactivo + vista 3D          │
-│  │               │  + caracterización por cluster           │
+│  │               │  + filtro por aeropuerto y ruta          │
+│  │               │  + estadísticas globales                 │
 │  └──────────────┘                                           │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    ANÁLISIS MICRO                            │
+│              (sobre trayectorias_proyectadas.parquet)        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Selección de aeropuerto (código ICAO)                      │
+│         │                                                   │
+│         ▼                                                   │
+│  ┌──────────────────┐                                       │
+│  │ recorte_micro.py  │  Recorta trayectorias al radio de   │
+│  │                   │  100 km del aeropuerto + remuestreo  │
+│  │                   │  a 50 puntos equidistantes           │
+│  └──────┬───────────┘                                       │
+│         │  trayectorias_micro_{ICAO}.parquet                │
+│         ▼                                                   │
+│  ┌──────────────────┐                                       │
+│  │ distancias_micro  │  Weighted Euclidean Distance (WED)   │
+│  │ .py               │  Peso 1.0 en entrada TMA → 0.2 en   │
+│  │                   │  aeropuerto (Corrado et al., 2020)   │
+│  └──────┬───────────┘                                       │
+│         │  matriz_micro_{ICAO}.npy                          │
+│         ▼                                                   │
+│  ┌──────────────────┐                                       │
+│  │ clustering_micro  │  HDBSCAN con min_cluster_size        │
+│  │ .py               │  interactivo                         │
+│  └──────┬───────────┘                                       │
+│         │  clusters_micro_{ICAO}.parquet                     │
+│         ▼                                                   │
+│  ┌──────────────────┐                                       │
+│  │ dashboard_micro   │  Dash + Plotly → http://127.0.0.1:   │
+│  │ .py               │  8051. Vista por clusters + vista    │
+│  │                   │  3D + vista por rutas                │
+│  └──────────────────┘                                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Ejecución rápida
 
+### Pipeline Macro (corredores continentales)
 ```bash
 cd src/script/
 pipeline_macro.bat
 ```
-
-Esto ejecuta los pasos 1-6 del pipeline. Después, para ver los resultados:
-
+Después, para ver los resultados:
 ```bash
 cd src/dashboard/
 python dashboard.py
+# Abrir http://127.0.0.1:8050
 ```
 
-Y abrir `http://127.0.0.1:8050` en el navegador.
+### Pipeline Micro (flujos en área terminal)
+```bash
+cd src/script/
+pipeline_micro.bat
+# Pide el código ICAO del aeropuerto (ej: EKCH, LOWW, LEBL)
+```
+Después, para ver los resultados:
+```bash
+cd src/dashboard/
+python dashboard_micro.py
+# Abrir http://127.0.0.1:8051
+```
+
+Para limpiar resultados micro y empezar de cero:
+```bash
+cd src/script/
+limpiar_micro.bat
+```
+
+## Diferencia Macro vs Micro
+
+| | Macro | Micro |
+|---|---|---|
+| Escala | Continental (Europa) | Terminal (100 km del aeropuerto) |
+| Trayectorias | Completas | Recortadas al área terminal |
+| Distancia | Euclídea | Euclídea ponderada (WED) |
+| Pesos | Iguales | Más peso en entrada al TMA |
+| Identifica | Corredores aéreos | STARs / flujos de aproximación |
+| Referencia | Olive et al. (2019) | Corrado et al. (2020) |
 
 ## Dependencias
 
