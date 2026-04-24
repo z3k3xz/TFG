@@ -7,7 +7,7 @@ RUTA_CLUSTERS = "../../resultados/macro/clusters_macro.parquet"
 RUTA_TRAYECTORIAS = "../../resultados/preparacion/trayectorias_proyectadas.parquet"
 RUTA_METADATOS = "../../datos/flight_list.csv"
 
-
+    
 def caracterizar_cluster(df_tray, df_meta, cluster_id, vuelos_cluster):
     """
     Genera un resumen estadístico de un cluster:

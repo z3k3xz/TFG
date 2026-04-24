@@ -26,14 +26,14 @@ Solo se procesan los vuelos que tienen metadatos en `flight_list.csv`.
 
 ```
 TFG/
-├── datos/
+├── datos/ (.gitignore)
 │   ├── parquet/
 │   │   ├── 2022-01-01.parquet
 │   │   ├── 2022-01-02.parquet
 │   │   └── ...
 │   └── flight_list.csv
 │
-├── resultados/
+├── resultados/ (.gitignore)
 │   ├── preparacion/
 │   │   ├── datos_fusionados.parquet
 │   │   ├── trayectorias_limpias.parquet
