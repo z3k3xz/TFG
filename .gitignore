@@ -1,35 +1,25 @@
-# =========================
-# Archivos de Datos y Resultados
-# =========================
-*.npy
-*.npz
-*.parquet
-*.csv
-*.xlsx
+# === DATOS (no se suben, se descargan del PRC Data Challenge) ===
+datos/parquet/
+datos/flight_list.csv
+
+# === RESULTADOS (se regeneran ejecutando el pipeline) ===
 resultados/
 
-# =========================
-# Entornos Virtuales
-# =========================
-.env
-venv/
+# === PYTHON ===
+__pycache__/
+*.pyc
+*.pyo
 .venv/
+venv/
 env/
 
-# =========================
-# Caché y Archivos Compilados de Python
-# =========================
-__pycache__/
-*.py[cod]
-*$py.class
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# =========================
-# Jupyter Notebooks
-# =========================
-.ipynb_checkpoints/
-
-# =========================
-# Herramientas del Sistema Operativo
-# =========================
+# === OS ===
 .DS_Store
 Thumbs.db
+desktop.ini
