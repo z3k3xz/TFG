@@ -296,8 +296,8 @@ def crear_tabla_resumen(cluster_id):
 def crear_figura_aeropuerto(codigo_aeropuerto, modo_filtro):
     """
     Genera un mapa con las trayectorias que tienen el aeropuerto
-    seleccionado como origen, destino o ambos. Coloreadas por cluster,
-    ruido en gris.
+    seleccionado como origen, destino o ambos. Agrupadas por ruta
+    en la leyenda para poder activar/desactivar cada una.
     """
     fig = go.Figure()
 
@@ -315,69 +315,84 @@ def crear_figura_aeropuerto(codigo_aeropuerto, modo_filtro):
         fig.update_layout(title='Sin vuelos para este aeropuerto', height=500)
         return fig, html.P('Sin datos')
 
-    # Separar ruido y clusters
-    df_ruido = df_filtrado[df_filtrado['cluster'] == -1]
-    df_con_cluster = df_filtrado[df_filtrado['cluster'] >= 0]
+    # Obtener ruta de cada vuelo
+    meta_vuelos = df_filtrado.groupby('flight_id')[['adep', 'name_adep', 'ades', 'name_ades', 'cluster', 'airline']].first()
+    meta_vuelos['ruta'] = meta_vuelos['adep'].fillna('?') + ' → ' + meta_vuelos['ades'].fillna('?')
 
-    # Pintar ruido en gris
-    for fid in df_ruido['flight_id'].unique():
-        vuelo = df_ruido[df_ruido['flight_id'] == fid]
-        meta_v = vuelo.iloc[0]
-        fig.add_trace(go.Scattergl(
-            x=vuelo['x'], y=vuelo['y'],
-            mode='lines',
-            line=dict(color=COLOR_RUIDO, width=1),
-            opacity=0.4,
-            showlegend=False,
-            hovertemplate=(
-                f'<b>{fid}</b><br>'
-                f'{meta_v.get("adep", "?")} → {meta_v.get("ades", "?")}<br>'
-                '<b>Ruido</b>'
-                '<extra></extra>'
-            )
-        ))
+    # Ordenar rutas por frecuencia
+    conteo_rutas = meta_vuelos['ruta'].value_counts()
 
-    # Pintar clusters
-    clusters_presentes = sorted(df_con_cluster['cluster'].unique())
-    for cluster_id in clusters_presentes:
-        df_c = df_con_cluster[df_con_cluster['cluster'] == cluster_id]
-        color = COLORES[cluster_id % len(COLORES)]
-        n_vuelos_c = df_c['flight_id'].nunique()
+    # Paleta de colores por ruta
+    rutas_unicas = conteo_rutas.index.tolist()
+    colores_ruta = {}
+    for i, ruta in enumerate(rutas_unicas):
+        colores_ruta[ruta] = COLORES[i % len(COLORES)]
+
+    # Pintar por ruta
+    for ruta in rutas_unicas:
+        ids_ruta = meta_vuelos[meta_vuelos['ruta'] == ruta].index
+        n_vuelos_ruta = len(ids_ruta)
+        color = colores_ruta[ruta]
+
+        # Contar cuántos son cluster y cuántos ruido
+        n_cluster_r = meta_vuelos.loc[ids_ruta, 'cluster'].apply(lambda x: x >= 0).sum()
+        n_ruido_r = n_vuelos_ruta - n_cluster_r
+
+        # Etiqueta de leyenda
+        if n_ruido_r == n_vuelos_ruta:
+            label = f'{ruta} ({n_vuelos_ruta}) [ruido]'
+        elif n_ruido_r > 0:
+            label = f'{ruta} ({n_vuelos_ruta}, {n_ruido_r} ruido)'
+        else:
+            label = f'{ruta} ({n_vuelos_ruta})'
+
         primera = True
-        for fid in df_c['flight_id'].unique():
-            vuelo = df_c[df_c['flight_id'] == fid]
-            meta_v = vuelo.iloc[0]
+        for fid in ids_ruta:
+            vuelo = df_filtrado[df_filtrado['flight_id'] == fid]
+            meta_v = meta_vuelos.loc[fid]
+            cluster_id = meta_v['cluster']
+            es_ruido = cluster_id == -1
+
             fig.add_trace(go.Scattergl(
                 x=vuelo['x'], y=vuelo['y'],
                 mode='lines',
-                line=dict(color=color, width=1.2),
-                opacity=0.7,
-                name=f'Cluster {cluster_id} ({n_vuelos_c})' if primera else None,
+                line=dict(color=color, width=1.2, dash='dot' if es_ruido else 'solid'),
+                opacity=0.4 if es_ruido else 0.7,
+                name=label if primera else None,
                 showlegend=primera,
-                legendgroup=f'aero_cluster_{cluster_id}',
+                legendgroup=f'ruta_{ruta}',
                 hovertemplate=(
-                    f'<b>{fid}</b><br>'
-                    f'{meta_v.get("adep", "?")} ({meta_v.get("name_adep", "")}) → '
+                    f'<b>Vuelo:</b> {fid}<br>'
+                    f'<b>Ruta:</b> {meta_v.get("adep", "?")} ({meta_v.get("name_adep", "")}) → '
                     f'{meta_v.get("ades", "?")} ({meta_v.get("name_ades", "")})<br>'
-                    f'<b>Cluster {cluster_id}</b>'
+                    f'<b>Aerolínea:</b> {meta_v.get("airline", "?")}<br>'
+                    f'<b>{"Ruido" if es_ruido else f"Cluster {cluster_id}"}</b>'
                     '<extra></extra>'
                 )
             ))
             primera = False
 
     n_total = len(ids_filtrados)
-    n_cluster = df_con_cluster['flight_id'].nunique()
-    n_ruido_aero = df_ruido['flight_id'].nunique()
+    n_ruido_aero = (meta_vuelos['cluster'] == -1).sum()
+    n_cluster = n_total - n_ruido_aero
+    clusters_presentes = sorted(meta_vuelos[meta_vuelos['cluster'] >= 0]['cluster'].unique())
     nombre = aeropuertos.get(codigo_aeropuerto, '')
+
+    # Calcular rango fijo de ejes (con margen del 5%)
+    x_min, x_max = df_filtrado['x'].min(), df_filtrado['x'].max()
+    y_min, y_max = df_filtrado['y'].min(), df_filtrado['y'].max()
+    margen_x = (x_max - x_min) * 0.05
+    margen_y = (y_max - y_min) * 0.05
 
     fig.update_layout(
         title=f'{codigo_aeropuerto} ({nombre}) — {n_total} vuelos ({n_cluster} en clusters, {n_ruido_aero} ruido)',
         xaxis_title='X (metros, LCC)',
         yaxis_title='Y (metros, LCC)',
-        xaxis=dict(scaleanchor='y', scaleratio=1),
+        xaxis=dict(scaleanchor='y', scaleratio=1, range=[x_min - margen_x, x_max + margen_x]),
+        yaxis=dict(range=[y_min - margen_y, y_max + margen_y]),
         plot_bgcolor='white',
         height=600,
-        legend=dict(font=dict(size=10)),
+        legend=dict(font=dict(size=9), itemclick='toggle', itemdoubleclick='toggleothers'),
         margin=dict(l=60, r=20, t=50, b=60)
     )
 
@@ -385,19 +400,23 @@ def crear_figura_aeropuerto(codigo_aeropuerto, modo_filtro):
     pct_ruido = n_ruido_aero / n_total * 100 if n_total > 0 else 0
 
     # Tabla de rutas desglosada
-    rutas_info = df_filtrado.groupby('flight_id')[['adep', 'name_adep', 'ades', 'name_ades', 'cluster']].first()
-    rutas_info['ruta'] = rutas_info['adep'].fillna('?') + ' → ' + rutas_info['ades'].fillna('?')
-
-    # Agrupar por ruta y cluster
     filas_tabla = []
-    for ruta, grupo_ruta in rutas_info.groupby('ruta'):
-        for cluster_id, grupo_cluster in grupo_ruta.groupby('cluster'):
-            n = len(grupo_cluster)
+    for ruta in rutas_unicas:
+        ids_ruta = meta_vuelos[meta_vuelos['ruta'] == ruta].index
+        # Obtener nombres de la primera fila
+        primera_fila = meta_vuelos.loc[ids_ruta[0]]
+        name_adep_r = primera_fila.get('name_adep', '')
+        name_ades_r = primera_fila.get('name_ades', '')
+        adep_r = primera_fila.get('adep', '?')
+        ades_r = primera_fila.get('ades', '?')
+        ruta_con_nombre = f'{adep_r} ({name_adep_r}) → {ades_r} ({name_ades_r})'
+        for cluster_id, grupo in meta_vuelos.loc[ids_ruta].groupby('cluster'):
+            n = len(grupo)
             if cluster_id == -1:
                 etiqueta = 'Ruido'
             else:
                 etiqueta = f'Cluster {cluster_id}'
-            filas_tabla.append({'ruta': ruta, 'cluster': etiqueta, 'cluster_id': cluster_id, 'n_vuelos': n})
+            filas_tabla.append({'ruta': ruta_con_nombre, 'cluster': etiqueta, 'cluster_id': cluster_id, 'n_vuelos': n})
 
     filas_tabla.sort(key=lambda x: (-x['n_vuelos']))
 
@@ -543,32 +562,6 @@ app.layout = html.Div([
                             'borderRadius': '5px', 'margin': '10px'})
         ], style={'display': 'flex'}),
 
-        # Filtro por ruta específica
-        html.Div([
-            html.Hr(style={'margin': '15px 0'}),
-            html.Div([
-                html.Div([
-                    html.Label('Filtrar por ruta:', style={'fontWeight': 'bold'}),
-                    dcc.Dropdown(
-                        id='selector-ruta',
-                        options=[],
-                        value=None,
-                        placeholder='Selecciona primero un aeropuerto...',
-                        style={'width': '500px'}
-                    ),
-                ]),
-            ]),
-            html.Div([
-                html.Div([
-                    dcc.Graph(id='mapa-ruta')
-                ], style={'flex': '3'}),
-                html.Div(id='resumen-ruta',
-                         style={'flex': '1', 'padding': '20px', 'fontFamily': 'Arial',
-                                'fontSize': '14px', 'backgroundColor': '#f9f9f9',
-                                'borderRadius': '5px', 'margin': '10px'})
-            ], style={'display': 'flex'}),
-        ]),
-
     ], style={'padding': '0 20px'}),
 
 ], style={'fontFamily': 'Arial', 'maxWidth': '1400px', 'margin': '0 auto'})
@@ -607,148 +600,6 @@ def actualizar_aeropuerto(codigo, modo):
     if codigo is None:
         return go.Figure(), html.P('Selecciona un aeropuerto')
     return crear_figura_aeropuerto(codigo, modo)
-
-
-@app.callback(
-    [Output('selector-ruta', 'options'),
-     Output('selector-ruta', 'value'),
-     Output('selector-ruta', 'placeholder')],
-    [Input('selector-aeropuerto', 'value'),
-     Input('modo-filtro-aeropuerto', 'value')]
-)
-def actualizar_opciones_ruta(codigo, modo):
-    if codigo is None:
-        return [], None, 'Selecciona primero un aeropuerto...'
-
-    # Filtrar vuelos por aeropuerto
-    if modo == 'origen':
-        ids = df[df['adep'] == codigo]['flight_id'].unique()
-    elif modo == 'destino':
-        ids = df[df['ades'] == codigo]['flight_id'].unique()
-    else:
-        ids = df[(df['adep'] == codigo) | (df['ades'] == codigo)]['flight_id'].unique()
-
-    df_f = df[df['flight_id'].isin(ids)]
-    rutas = df_f.groupby('flight_id')[['adep', 'ades']].first()
-    rutas['ruta'] = rutas['adep'].fillna('?') + ' → ' + rutas['ades'].fillna('?')
-    conteo = rutas['ruta'].value_counts()
-
-    opciones = [{'label': f'{ruta} ({count} vuelos)', 'value': ruta} for ruta, count in conteo.items()]
-    return opciones, None, 'Selecciona una ruta...'
-
-
-@app.callback(
-    [Output('mapa-ruta', 'figure'),
-     Output('resumen-ruta', 'children')],
-    [Input('selector-ruta', 'value'),
-     Input('selector-aeropuerto', 'value'),
-     Input('modo-filtro-aeropuerto', 'value')]
-)
-def actualizar_mapa_ruta(ruta, codigo_aeropuerto, modo):
-    if ruta is None or codigo_aeropuerto is None:
-        return go.Figure(), html.P('Selecciona una ruta')
-
-    # Parsear ruta
-    partes = ruta.split(' → ')
-    if len(partes) != 2:
-        return go.Figure(), html.P('Ruta no válida')
-    adep_filtro, ades_filtro = partes
-
-    # Filtrar vuelos de esta ruta exacta
-    meta_vuelos = df.groupby('flight_id')[['adep', 'ades', 'name_adep', 'name_ades', 'cluster', 'airline']].first()
-    ids_ruta = meta_vuelos[(meta_vuelos['adep'] == adep_filtro) & (meta_vuelos['ades'] == ades_filtro)].index
-    df_ruta = df[df['flight_id'].isin(ids_ruta)]
-
-    if len(df_ruta) == 0:
-        return go.Figure(), html.P('Sin vuelos para esta ruta')
-
-    fig = go.Figure()
-
-    df_ruido = df_ruta[df_ruta['cluster'] == -1]
-    df_con_cluster = df_ruta[df_ruta['cluster'] >= 0]
-
-    # Pintar ruido
-    n_ruido_r = df_ruido['flight_id'].nunique()
-    primera_ruido = True
-    for fid in df_ruido['flight_id'].unique():
-        vuelo = df_ruido[df_ruido['flight_id'] == fid]
-        meta_v = vuelo.iloc[0]
-        fig.add_trace(go.Scattergl(
-            x=vuelo['x'], y=vuelo['y'],
-            mode='lines',
-            line=dict(color=COLOR_RUIDO, width=1.5),
-            opacity=0.5,
-            name=f'Ruido ({n_ruido_r})' if primera_ruido else None,
-            showlegend=primera_ruido,
-            legendgroup='ruta_ruido',
-            hovertemplate=(
-                f'<b>{fid}</b><br>'
-                f'Aerolínea: {meta_v.get("airline", "?")}<br>'
-                '<b>Ruido</b>'
-                '<extra></extra>'
-            )
-        ))
-        primera_ruido = False
-
-    # Pintar clusters
-    clusters_ruta = sorted(df_con_cluster['cluster'].unique())
-    for cluster_id in clusters_ruta:
-        df_c = df_con_cluster[df_con_cluster['cluster'] == cluster_id]
-        color = COLORES[cluster_id % len(COLORES)]
-        n_c = df_c['flight_id'].nunique()
-        primera = True
-        for fid in df_c['flight_id'].unique():
-            vuelo = df_c[df_c['flight_id'] == fid]
-            meta_v = vuelo.iloc[0]
-            fig.add_trace(go.Scattergl(
-                x=vuelo['x'], y=vuelo['y'],
-                mode='lines',
-                line=dict(color=color, width=1.5),
-                opacity=0.7,
-                name=f'Cluster {cluster_id} ({n_c})' if primera else None,
-                showlegend=primera,
-                legendgroup=f'ruta_cluster_{cluster_id}',
-                hovertemplate=(
-                    f'<b>{fid}</b><br>'
-                    f'Aerolínea: {meta_v.get("airline", "?")}<br>'
-                    f'<b>Cluster {cluster_id}</b>'
-                    '<extra></extra>'
-                )
-            ))
-            primera = False
-
-    n_total_ruta = len(ids_ruta)
-    n_cluster_ruta = df_con_cluster['flight_id'].nunique()
-    name_adep = aeropuertos.get(adep_filtro, '')
-    name_ades = aeropuertos.get(ades_filtro, '')
-
-    fig.update_layout(
-        title=f'{adep_filtro} ({name_adep}) → {ades_filtro} ({name_ades}) — {n_total_ruta} vuelos',
-        xaxis_title='X (metros, LCC)',
-        yaxis_title='Y (metros, LCC)',
-        xaxis=dict(scaleanchor='y', scaleratio=1),
-        plot_bgcolor='white',
-        height=500,
-        legend=dict(font=dict(size=10)),
-        margin=dict(l=60, r=20, t=50, b=60)
-    )
-
-    # Resumen
-    pct_ruido_r = n_ruido_r / n_total_ruta * 100 if n_total_ruta > 0 else 0
-    resumen_ruta = html.Div([
-        html.H4(f'{adep_filtro} → {ades_filtro}'),
-        html.P(f'{name_adep} → {name_ades}', style={'color': '#666', 'marginTop': '0'}),
-        html.Table([
-            html.Tr([html.Td('Vuelos totales'), html.Td(f'{n_total_ruta}')]),
-            html.Tr([html.Td('En clusters'), html.Td(f'{n_cluster_ruta} ({100 - pct_ruido_r:.1f}%)')]),
-            html.Tr([html.Td('Ruido'), html.Td(f'{n_ruido_r} ({pct_ruido_r:.1f}%)')]),
-        ], style={'width': '100%', 'borderCollapse': 'collapse', 'marginBottom': '10px'}),
-        html.H5('Clusters que contienen esta ruta'),
-        html.Ul([html.Li(f'Cluster {c}: {df_con_cluster[df_con_cluster["cluster"] == c]["flight_id"].nunique()} vuelos')
-                 for c in clusters_ruta]) if clusters_ruta else html.P('Todos son ruido'),
-    ], style={'fontSize': '13px'})
-
-    return fig, resumen_ruta
 
 
 # === EJECUCIÓN ===
