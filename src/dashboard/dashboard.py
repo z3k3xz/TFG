@@ -4,10 +4,8 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
-#pip install dash plotly
-
 # === CONFIGURACIÓN ===
-RUTA_TRAYECTORIAS = "../../resultados/preparacion/trayectorias_proyectadas.parquet"
+RUTA_TRAYECTORIAS = "../../resultados/preparacion/trayectorias_normalizadas.parquet"
 RUTA_CLUSTERS = "../../resultados/macro/clusters_macro.parquet"
 RUTA_METADATOS = "../../datos/flight_list.csv"
 
@@ -27,8 +25,8 @@ df = df.merge(
     how='left'
 )
 
-# Ordenar por timestamp dentro de cada vuelo
-df = df.sort_values(['flight_id', 'timestamp'])
+# Ordenar por point_index dentro de cada vuelo
+df = df.sort_values(['flight_id', 'point_index'])
 
 # Lista de clusters
 clusters_validos = sorted(df[df['cluster'] >= 0]['cluster'].unique())
