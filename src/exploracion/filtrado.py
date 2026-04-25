@@ -11,3 +11,5 @@ with open("../../resultados/ids_seleccionados.txt", "w") as f:
         f.write(f"{flight_id}\n")
  
 print(f"Hecho: Se han guardado {len(ids_filtrados)} IDs en 'resultados/ids_seleccionados.txt'")
+
+

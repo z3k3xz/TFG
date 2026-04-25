@@ -20,3 +20,5 @@ plt.ylabel("Número de registros (puntos de trayectoria)")
 plt.grid(axis='y', alpha=0.3)
 
 plt.show()
+
+
